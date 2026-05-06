@@ -1,0 +1,11 @@
+KernelSU License Notice
+=======================
+
+Parts of the metamodule system in this project are inspired by and/or
+derived from KernelSU (https://github.com/tiann/KernelSU), which is
+licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+The full text of the GPL-3.0 license is included in the LICENSE file
+at the root of this repository.
+
+KernelSU Copyright (C) 2022-2024 tiann and contributors.
