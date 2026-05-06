@@ -1,12 +1,11 @@
-use crate::consts::{MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
+use crate::consts::{PREINITDEV, PREINITMIRR};
 use crate::ffi::{get_magisk_tmp, resolve_preinit_dir};
 use crate::resetprop::get_prop;
 use base::{
     FsPathBuilder, LibcReturn, LoggedResult, MountInfo, ResultExt, Utf8CStr, Utf8CStrBuf, cstr,
-    debug, info, libc, parse_mount_info, warn,
+    info, libc, parse_mount_info, warn,
 };
 use libc::{c_uint, dev_t, major};
-use nix::mount::MsFlags;
 use nix::sys::stat::{Mode, SFlag, mknod};
 use num_traits::AsPrimitive;
 use std::cmp::Ordering::{Greater, Less};
@@ -62,36 +61,6 @@ pub fn setup_preinit_dir() {
     }
 
     warn!("mount: preinit dir not found");
-}
-
-pub fn setup_module_mount() {
-    // Bind remount module root to clear nosuid
-    let module_mnt = cstr::buf::default()
-        .join_path(get_magisk_tmp())
-        .join_path(MODULEMNT);
-    let _ = || -> LoggedResult<()> {
-        module_mnt.mkdir(0o755)?;
-        cstr!(MODULEROOT).bind_mount_to(&module_mnt, false)?;
-        module_mnt.remount_mount_point_flags(MsFlags::MS_RDONLY)?;
-        Ok(())
-    }();
-}
-
-pub fn clean_mounts() {
-    let magisk_tmp = get_magisk_tmp();
-
-    let mut buf = cstr::buf::default();
-
-    let module_mnt = buf.append_path(magisk_tmp).append_path(MODULEMNT);
-    module_mnt.unmount().log_ok();
-    buf.clear();
-
-    let worker_dir = buf.append_path(magisk_tmp).append_path(WORKERDIR);
-    let _ = || -> LoggedResult<()> {
-        worker_dir.set_mount_private(true)?;
-        worker_dir.unmount()?;
-        Ok(())
-    }();
 }
 
 // when partitions have the same fs type, the order is:
