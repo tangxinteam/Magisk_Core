@@ -12,3 +12,7 @@ native/out
 # Android Studio
 *.iml
 .idea
+
+# Python
+__pycache__/
+*.pyc
