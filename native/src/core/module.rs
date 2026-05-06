@@ -1,6 +1,7 @@
-use crate::consts::{MODULEROOT, MODULEUPGRADE};
+use crate::consts::{METAMODULE, MODULEROOT, MODULEUPGRADE};
 use crate::daemon::MagiskD;
 use crate::ffi::{ModuleInfo, exec_module_scripts, exec_script};
+use crate::metamodule::{exec_metauninstall_script, remove_symlink};
 use crate::resetprop::load_prop_file;
 use base::{
     DirEntry, Directory, FsPathBuilder, LoggedResult, ResultExt, SilentLogExt, Utf8CStr,
@@ -75,11 +76,21 @@ fn run_uninstall_script(module_name: &Utf8CStr) {
     exec_script(&script);
 }
 
+fn is_metamodule_path(path: &Utf8CStr) -> bool {
+    crate::metamodule::is_metamodule(path)
+}
+
 pub fn remove_modules() {
     for_each_module(|e| {
         let dir = e.open_as_dir()?;
+        let name = e.name();
         if dir.contains_path(cstr!("uninstall.sh")) {
-            run_uninstall_script(e.name());
+            run_uninstall_script(name);
+        }
+        // If this is the metamodule, remove symlink
+        let mut path = cstr::buf::default().join_path(MODULEROOT).join_path(name);
+        if is_metamodule_path(&path) {
+            remove_symlink();
         }
         Ok(())
     })
@@ -95,8 +106,13 @@ fn collect_modules() -> Vec<ModuleInfo> {
         let dir = e.open_as_dir()?;
         if dir.contains_path(cstr!("remove")) {
             info!("{name}: remove");
+            exec_metauninstall_script(name);
             if dir.contains_path(cstr!("uninstall.sh")) {
                 run_uninstall_script(name);
+            }
+            let mut path = cstr::buf::default().join_path(MODULEROOT).join_path(name);
+            if is_metamodule_path(&path) {
+                remove_symlink();
             }
             dir.remove_all()?;
             e.unlink()?;

@@ -1,9 +1,17 @@
-use crate::consts::{METAMODULE, MODULEROOT};
-use base::{Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CStrBuf, Utf8CString, cstr, info};
+use crate::consts::{METAMODULE, MODULEROOT, MODULEUPGRADE};
+use base::{Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CStrBuf, Utf8CString, cstr, info, warn};
+use nix::fcntl::OFlag;
+
+const METAMOUNT_SH: &str = "metamount.sh";
+const METAINSTALL_SH: &str = "metainstall.sh";
+const METAUNINSTALL_SH: &str = "metauninstall.sh";
+const UPDATE_MARKER: &str = "update";
+const REMOVE_MARKER: &str = "remove";
+const DISABLE_MARKER: &str = "disable";
 
 pub fn is_metamodule(module_dir: &Utf8CStr) -> bool {
     let mut prop_path = cstr::buf::default().join_path(module_dir).join_path("module.prop");
-    if let Ok(file) = prop_path.open(nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_CLOEXEC) {
+    if let Ok(file) = prop_path.open(OFlag::O_RDONLY | OFlag::O_CLOEXEC) {
         let reader = std::io::BufReader::new(file);
         for line in std::io::BufRead::lines(reader) {
             if let Ok(l) = line {
@@ -26,7 +34,7 @@ pub fn find_metamodule() -> Option<Utf8CString> {
                 continue;
             }
             let dir = e.open_as_dir()?;
-            if dir.contains_path(cstr!("remove")) || dir.contains_path(cstr!("disable")) {
+            if dir.contains_path(cstr!(REMOVE_MARKER)) || dir.contains_path(cstr!(DISABLE_MARKER)) {
                 continue;
             }
             let mut path = cstr::buf::default().join_path(MODULEROOT).join_path(e.name());
@@ -40,11 +48,22 @@ pub fn find_metamodule() -> Option<Utf8CString> {
     result
 }
 
+pub fn has_metamodule() -> bool {
+    find_metamodule().is_some()
+}
+
 pub fn ensure_metamodule_symlink() {
     let symlink = cstr!(METAMODULE);
     symlink.remove().ok();
     if let Some(target) = find_metamodule() {
         symlink.create_symlink_to(&target).log_ok();
+    }
+}
+
+pub fn remove_symlink() {
+    let symlink = cstr!(METAMODULE);
+    if symlink.exists() {
+        symlink.remove().ok();
     }
 }
 
@@ -59,18 +78,88 @@ pub fn get_metamodule_path() -> Option<Utf8CStrBuf> {
     None
 }
 
-pub fn exec_metamodule_script(stage: &Utf8CStr) {
-    if let Some(path) = get_metamodule_path() {
-        let script = cstr::buf::default().join_path(&path).join_path(stage);
+fn is_metamodule_stable(path: &Utf8CStr) -> bool {
+    let dir = match Directory::open(path) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    !dir.contains_path(cstr!(UPDATE_MARKER))
+        && !dir.contains_path(cstr!(REMOVE_MARKER))
+        && !dir.contains_path(cstr!(DISABLE_MARKER))
+}
+
+pub fn check_install_safety() -> Result<(), bool> {
+    let Some(path) = get_metamodule_path() else {
+        return Ok(());
+    };
+
+    let has_metainstall = {
+        let script = cstr::buf::default().join_path(&path).join_path(METAINSTALL_SH);
         if script.exists() {
-            info!("metamodule: exec {stage}");
-            crate::ffi::exec_script(&script);
+            true
+        } else {
+            // Check staged update dir
+            let update_script = cstr::buf::default()
+                .join_path(MODULEUPGRADE)
+                .join_path(path.file_name().unwrap_or(""))
+                .join_path(METAINSTALL_SH);
+            update_script.exists()
         }
+    };
+
+    if !has_metainstall {
+        return Ok(());
+    }
+
+    if is_metamodule_stable(&path) {
+        return Ok(());
+    }
+
+    let dir = Directory::open(&path).ok();
+    let is_disabled = dir.as_ref().map_or(false, |d| d.contains_path(cstr!(DISABLE_MARKER)));
+    Err(is_disabled)
+}
+
+fn check_metamodule_script(name: &str) -> Option<Utf8CString> {
+    let path = get_metamodule_path()?;
+    let dir = Directory::open(&path).ok()?;
+    if dir.contains_path(cstr!(DISABLE_MARKER)) {
+        return None;
+    }
+    let script = cstr::buf::default().join_path(&path).join_path(name);
+    if script.exists() {
+        Some(script.to_owned())
+    } else {
+        None
+    }
+}
+
+pub fn exec_metamodule_script(stage: &Utf8CStr) {
+    if let Some(script) = check_metamodule_script(stage.as_str()) {
+        info!("metamodule: exec {stage}");
+        crate::ffi::exec_script(&script);
     }
 }
 
 pub fn exec_metamount() {
-    exec_metamodule_script(cstr!("metamount.sh"));
+    if let Some(script) = check_metamodule_script(METAMOUNT_SH) {
+        info!("metamodule: exec metamount.sh");
+        crate::ffi::exec_script(&script);
+    }
+}
+
+pub fn exec_metauninstall_script(module_id: &Utf8CStr) {
+    if let Some(script) = check_metamodule_script(METAUNINSTALL_SH) {
+        info!("metamodule: exec metauninstall.sh for {module_id}");
+        let mut cmd = cstr::buf::default().join_path(cstr!("/data/adb/magisk/busybox"));
+        if !cmd.exists() {
+            cmd = cstr::buf::default().join_path(cstr!("/data/adb/magisk/busybox"));
+        }
+        let _ = std::process::Command::new(cmd.as_str())
+            .args(["sh", script.as_str()])
+            .env("MODULE_ID", module_id.as_str())
+            .status();
+    }
 }
 
 pub fn check_metamodule_for_install(module_path: &Utf8CStr) -> bool {
@@ -85,4 +174,8 @@ pub fn check_metamodule_for_install(module_path: &Utf8CStr) -> bool {
         }
     }
     true
+}
+
+pub fn get_metainstall_script() -> Option<Utf8CString> {
+    check_metamodule_script(METAINSTALL_SH)
 }

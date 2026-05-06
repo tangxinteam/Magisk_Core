@@ -685,6 +685,16 @@ install_module() {
         abort "! Another metamodule already exists"
       fi
     done
+  else
+    # Regular module: check metamodule install safety
+    if [ -L "/data/adb/metamodule" ]; then
+      local MMETA=$(readlink -f "/data/adb/metamodule")
+      if [ -f "$MMETA/metainstall.sh" ]; then
+        [ -f "$MMETA/update" ] && abort "! Metamodule is updating, install blocked"
+        [ -f "$MMETA/remove" ] && abort "! Metamodule is removing, install blocked"
+        [ -f "$MMETA/disable" ] && abort "! Metamodule is disabled, install blocked"
+      fi
+    fi
   fi
 
   # Create mod paths
@@ -694,6 +704,15 @@ install_module() {
 
   if is_legacy_script; then
     unzip -oj "$ZIPFILE" module.prop install.sh uninstall.sh 'common/*' -d $TMPDIR >&2
+
+    # Source metamodule install hook if available
+    if [ -L "/data/adb/metamodule" ]; then
+      local MMETA=$(readlink -f "/data/adb/metamodule")
+      if [ -f "$MMETA/metainstall.sh" ] && [ ! -f "$MMETA/disable" ]; then
+        ui_print "- Sourcing metamodule installer"
+        . "$MMETA/metainstall.sh"
+      fi
+    fi
 
     # Load install script
     . $TMPDIR/install.sh
@@ -721,6 +740,15 @@ install_module() {
       ui_print "- Extracting module files"
       unzip -o "$ZIPFILE" -x 'META-INF/*' -d $MODPATH >&2
       set_default_perm $MODPATH
+    fi
+
+    # Source metamodule install hook if available
+    if [ -L "/data/adb/metamodule" ]; then
+      local MMETA=$(readlink -f "/data/adb/metamodule")
+      if [ -f "$MMETA/metainstall.sh" ] && [ ! -f "$MMETA/disable" ]; then
+        ui_print "- Sourcing metamodule installer"
+        . "$MMETA/metainstall.sh"
+      fi
     fi
 
     # Load customization script
