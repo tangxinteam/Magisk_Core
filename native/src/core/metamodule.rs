@@ -67,12 +67,12 @@ pub fn remove_symlink() {
     }
 }
 
-pub fn get_metamodule_path() -> Option<Utf8CStrBuf> {
+pub fn get_metamodule_path() -> Option<Utf8CString> {
     let symlink = cstr!(METAMODULE);
     if symlink.exists() {
         let mut buf = cstr::buf::default();
         if symlink.read_link(&mut buf).is_ok() {
-            return Some(buf);
+            return Some(buf.to_owned());
         }
     }
     None
