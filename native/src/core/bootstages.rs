@@ -5,8 +5,9 @@ use crate::ffi::{
     get_magisk_tmp,
 };
 use crate::logging::setup_logfile;
-use crate::metamodule::{exec_metamodule_script, exec_metamount, ensure_metamodule_symlink};
+use crate::metamodule::{exec_metamodule_script, exec_metamount, ensure_metamodule_symlink, exec_stage_script};
 use crate::module::disable_modules;
+use crate::module_config;
 use crate::mount::setup_preinit_dir;
 use crate::resetprop::get_prop;
 use crate::selinux::restorecon;
@@ -65,6 +66,10 @@ impl MagiskD {
         cstr!(concatcp!(SECURE_DIR, "/service.d"))
             .mkdir(0o755)
             .log_ok();
+        
+        // Ensure module config directory exists (KSU compatible)
+        module_config::ensure_config_dir();
+        
         restorecon();
 
         let busybox = cstr!(concatcp!(DATABIN, "/busybox"));
@@ -147,13 +152,29 @@ impl MagiskD {
             return true;
         }
 
+        // KSU-aligned execution order:
+        // 1. Common post-fs-data scripts
         exec_common_scripts(cstr!("post-fs-data"));
+        
+        // 2. Metamodule symlink
         ensure_metamodule_symlink();
-        exec_metamodule_script(cstr!("post-fs-data.sh"));
+        
+        // 3. Metamodule post-fs-data script (priority)
+        exec_stage_script("post-fs-data", true);
+        
+        // 4. Regular modules post-fs-data scripts
         self.handle_modules();
+        
+        // 5. Metamodule mount (with MODULE_DIR env)
         exec_metamount();
-        exec_metamodule_script(cstr!("post-mount.sh"));
-        exec_module_scripts(cstr!("post-mount.sh"), self.module_list.get().unwrap_or(&vec![]));
+        
+        // 6. Metamodule post-mount script
+        exec_stage_script("post-mount", true);
+        
+        // 7. Regular modules post-mount scripts
+        if let Some(module_list) = self.module_list.get() {
+            exec_module_scripts(cstr!("post-mount"), module_list);
+        }
 
         false
     }
@@ -162,8 +183,9 @@ impl MagiskD {
         setup_logfile();
         info!("** late_start service mode running");
 
+        // KSU-aligned execution order
         exec_common_scripts(cstr!("service"));
-        exec_metamodule_script(cstr!("service.sh"));
+        exec_stage_script("service", true);
         if let Some(module_list) = self.module_list.get() {
             exec_module_scripts(cstr!("service"), module_list);
         }
@@ -184,9 +206,11 @@ impl MagiskD {
 
         setup_preinit_dir();
         self.ensure_manager();
-        exec_metamodule_script(cstr!("boot-completed.sh"));
+        
+        // KSU-aligned execution order
+        exec_stage_script("boot-completed", false);
         if let Some(module_list) = self.module_list.get() {
-            exec_module_scripts(cstr!("boot-completed.sh"), module_list);
+            exec_module_scripts(cstr!("boot-completed"), module_list);
         }
     }
 
@@ -220,6 +244,41 @@ impl MagiskD {
             }
             _ => {}
         }
+    }
+
+    // KSU-compatible soft reboot
+    pub fn soft_reboot(&self) {
+        info!("** emulating soft_reboot!");
+        
+        // Reset boot state to allow re-execution
+        {
+            let mut state = self.boot_stage_lock.lock();
+            state.remove(BootState::PostFsDataDone);
+            state.remove(BootState::LateStartDone);
+            state.remove(BootState::BootComplete);
+        }
+        
+        // Clear temp module configs
+        module_config::clear_temp_configs();
+        
+        // Re-run post-fs-data
+        if check_data() {
+            if self.post_fs_data() {
+                let mut state = self.boot_stage_lock.lock();
+                state.insert(BootState::SafeMode);
+            }
+            let mut state = self.boot_stage_lock.lock();
+            state.insert(BootState::PostFsDataDone);
+        }
+        
+        // Re-run service stage
+        self.late_start();
+        {
+            let mut state = self.boot_stage_lock.lock();
+            state.insert(BootState::LateStartDone);
+        }
+        
+        info!("** soft_reboot complete");
     }
 }
 
