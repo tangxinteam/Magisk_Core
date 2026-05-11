@@ -123,6 +123,11 @@ impl MagiskD {
                     self.reboot();
                 }
             }
+            RequestCode::SOFT_REBOOT => {
+                info!("** soft_reboot requested");
+                client.write_pod(&0).log_ok();
+                self.soft_reboot();
+            }
             _ => {}
         }
     }
@@ -198,6 +203,7 @@ impl MagiskD {
             RequestCode::POST_FS_DATA
             | RequestCode::LATE_START
             | RequestCode::BOOT_COMPLETE
+            | RequestCode::SOFT_REBOOT
             | RequestCode::SQLITE_CMD
             | RequestCode::STOP_DAEMON => {
                 if !is_root {

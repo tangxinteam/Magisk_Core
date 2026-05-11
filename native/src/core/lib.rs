@@ -32,6 +32,7 @@ mod logging;
 mod magisk;
 mod metamodule;
 mod module;
+mod module_config;
 mod mount;
 mod package;
 mod resetprop;
@@ -61,6 +62,7 @@ pub mod ffi {
         POST_FS_DATA,
         LATE_START,
         BOOT_COMPLETE,
+        SOFT_REBOOT,
 
         END,
     }

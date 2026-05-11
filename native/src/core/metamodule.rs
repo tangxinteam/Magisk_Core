@@ -1,12 +1,18 @@
 #![allow(dead_code)]
 
-use crate::consts::{METAMODULE, MODULEROOT, MODULEUPGRADE};
+use crate::consts::{MAGISKDB, METAMODULE, MODULEROOT, MODULEUPGRADE};
+use crate::module_config;
 use base::{Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CString, cstr, info};
 use nix::fcntl::OFlag;
+use std::process::{Command, Stdio};
 
 const METAMOUNT_SH: &str = "metamount.sh";
 const METAINSTALL_SH: &str = "metainstall.sh";
 const METAUNINSTALL_SH: &str = "metauninstall.sh";
+const POST_FS_DATA_SH: &str = "post-fs-data.sh";
+const SERVICE_SH: &str = "service.sh";
+const POST_MOUNT_SH: &str = "post-mount.sh";
+const BOOT_COMPLETED_SH: &str = "boot-completed.sh";
 const UPDATE_MARKER: &str = "update";
 const REMOVE_MARKER: &str = "remove";
 const DISABLE_MARKER: &str = "disable";
@@ -80,6 +86,11 @@ pub fn get_metamodule_path() -> Option<Utf8CString> {
     None
 }
 
+pub fn get_metamodule_id() -> Option<String> {
+    get_metamodule_path()
+        .and_then(|p| p.file_name().map(|s| s.to_string()))
+}
+
 fn is_metamodule_stable(path: &Utf8CStr) -> bool {
     let dir = match Directory::open(path) {
         Ok(d) => d,
@@ -136,32 +147,71 @@ fn check_metamodule_script(name: &str) -> Option<Utf8CString> {
     }
 }
 
-pub fn exec_metamodule_script(stage: &Utf8CStr) {
-    if let Some(script) = check_metamodule_script(stage.as_str()) {
-        info!("metamodule: exec {stage}");
+// Execute metamodule script with optional environment variables
+fn exec_metamodule_script_with_env(stage: &str, envs: Vec<(&str, String)>, block: bool) {
+    let Some(script) = check_metamodule_script(stage) else {
+        return;
+    };
+    
+    info!("metamodule: exec {stage}");
+    
+    let busybox = cstr!("/data/adb/magisk/busybox");
+    if !busybox.exists() {
+        // Fallback to exec_script (non-blocking, no env)
         crate::ffi::exec_script(&script);
+        return;
     }
+    
+    let mut cmd = Command::new(busybox.as_str());
+    cmd.arg("sh").arg(script.as_str());
+    
+    // Add environment variables
+    for (key, value) in envs {
+        cmd.env(key, value);
+    }
+    
+    // Add common script environments
+    if let Ok(metamodule_path) = get_metamodule_path().ok_or(()) {
+        cmd.env("MODDIR", metamodule_path.as_str());
+    }
+    if let Some(module_id) = get_metamodule_id() {
+        cmd.env("KSU_MODULE", &module_id);
+    }
+    
+    if block {
+        let _ = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status();
+    } else {
+        let _ = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    }
+}
+
+pub fn exec_metamodule_script(stage: &Utf8CStr) {
+    exec_metamodule_script_with_env(stage.as_str(), vec![], false);
+}
+
+// KSU-compatible: execute metamodule stage script with block option
+pub fn exec_stage_script(stage: &str, block: bool) {
+    let script_name = format!("{stage}.sh");
+    exec_metamodule_script_with_env(&script_name, vec![], block);
 }
 
 pub fn exec_metamount() {
-    if let Some(script) = check_metamodule_script(METAMOUNT_SH) {
-        info!("metamodule: exec metamount.sh");
-        crate::ffi::exec_script(&script);
+    let mut envs = vec![];
+    
+    // Pass MODULE_DIR to metamount.sh (KSU compatible)
+    envs.push(("MODULE_DIR", MODULEROOT.to_string()));
+    
+    // Pass metamodule directory if available
+    if let Some(path) = get_metamodule_path() {
+        envs.push(("METAMODULE_DIR", path.to_string()));
     }
+    
+    exec_metamodule_script_with_env(METAMOUNT_SH, envs, true);
 }
 
 pub fn exec_metauninstall_script(module_id: &Utf8CStr) {
-    if let Some(script) = check_metamodule_script(METAUNINSTALL_SH) {
-        info!("metamodule: exec metauninstall.sh for {module_id}");
-        let mut cmd = cstr::buf::default().join_path(cstr!("/data/adb/magisk/busybox"));
-        if !cmd.exists() {
-            cmd = cstr::buf::default().join_path(cstr!("/data/adb/magisk/busybox"));
-        }
-        let _ = std::process::Command::new(cmd.as_str())
-            .args(["sh", script.as_str()])
-            .env("MODULE_ID", module_id.as_str())
-            .status();
-    }
+    let mut envs = vec![("MODULE_ID", module_id.to_string())];
+    exec_metamodule_script_with_env(METAUNINSTALL_SH, envs, true);
 }
 
 pub fn check_metamodule_for_install(module_path: &Utf8CStr) -> bool {
@@ -180,4 +230,21 @@ pub fn check_metamodule_for_install(module_path: &Utf8CStr) -> bool {
 
 pub fn get_metainstall_script() -> Option<Utf8CString> {
     check_metamodule_script(METAINSTALL_SH)
+}
+
+// Load metamodule configs into environment
+pub fn load_metamodule_config_envs() -> Vec<(&'static str, String)> {
+    let mut envs = vec![];
+    
+    if let Some(module_id) = get_metamodule_id() {
+        // Check if metamodule has config for su_compat
+        if let Some(value) = module_config::get_config(&module_id, "manage.su_compat", false) {
+            envs.push(("KSU_SU_COMPAT", value));
+        }
+        if let Some(value) = module_config::get_config(&module_id, "manage.kernel_umount", false) {
+            envs.push(("KSU_KERNEL_UMOUNT", value));
+        }
+    }
+    
+    envs
 }
