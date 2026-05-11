@@ -5,7 +5,7 @@ use crate::ffi::{
     get_magisk_tmp,
 };
 use crate::logging::setup_logfile;
-use crate::metamodule::{exec_metamodule_script, exec_metamount, ensure_metamodule_symlink, exec_stage_script};
+use crate::metamodule::{exec_metamount, ensure_metamodule_symlink, exec_stage_script};
 use crate::module::disable_modules;
 use crate::module_config;
 use crate::mount::setup_preinit_dir;

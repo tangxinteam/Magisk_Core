@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::consts::{MAGISKDB, METAMODULE, MODULEROOT, MODULEUPGRADE};
+use crate::consts::{METAMODULE, MODULEROOT, MODULEUPGRADE};
 use crate::module_config;
 use base::{Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CString, cstr, info};
 use nix::fcntl::OFlag;
@@ -210,7 +210,7 @@ pub fn exec_metamount() {
 }
 
 pub fn exec_metauninstall_script(module_id: &Utf8CStr) {
-    let mut envs = vec![("MODULE_ID", module_id.to_string())];
+    let envs = vec![("MODULE_ID", module_id.to_string())];
     exec_metamodule_script_with_env(METAUNINSTALL_SH, envs, true);
 }
 
