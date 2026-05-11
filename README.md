@@ -11,10 +11,19 @@ Magisk_Core removed the magic mount system that was responsible for injecting `s
 1. `metamount.sh` - Copies the magisk binary to tmpfs and bind mounts it as:
    - `/system/bin/su`
    - `/system/xbin/su` (if directory exists)
+   - Marks mount as Magisk-branded for tracking compatibility
 
 2. `post-fs-data.sh` - Early stage verification
 
 3. `service.sh` - Runtime verification and recovery
+
+## KSU Compatibility
+
+This metamodule aligns with KernelSU metamodule conventions:
+- Supports `metamodule=1` marker in `module.prop`
+- Provides `metamount.sh`, `metainstall.sh`, and `metauninstall.sh` hooks
+- Exposes both `MAGISK_*` and `KSU_*` environment variables for cross-compatibility
+- Passes module IDs via `$1` argument (KSU standard) plus `MODULE_ID` env
 
 ## Installation
 
