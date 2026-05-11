@@ -41,7 +41,6 @@ fn read_config_file(path: &Utf8CStr) -> HashMap<String, String> {
 fn write_config_file(path: &Utf8CStr, configs: &HashMap<String, String>) -> LoggedResult<()> {
     let mut file = path.open(
         OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_TRUNC | OFlag::O_CLOEXEC,
-        0o600,
     )?;
     for (key, value) in configs {
         writeln!(file, "{}={}", key, value)?;
@@ -86,7 +85,7 @@ pub fn delete_config(module_id: &str, key: &str, temp: bool) {
 
 pub fn clear_temp_configs() {
     let _ = || -> LoggedResult<()> {
-        let dir = Directory::open(cstr!(MODULE_CONFIG_DIR))?;
+        let mut dir = Directory::open(cstr!(MODULE_CONFIG_DIR))?;
         while let Some(e) = dir.read()? {
             if !e.is_dir() {
                 continue;
