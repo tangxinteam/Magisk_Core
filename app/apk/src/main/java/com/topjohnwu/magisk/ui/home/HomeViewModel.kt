@@ -72,6 +72,9 @@ class HomeViewModel(
     val sepolDomain
         get() = Info.sepolDomain.ifEmpty { "magisk" }
 
+    val sepolFileType
+        get() = Info.sepolFileType.ifEmpty { "magisk_file" }
+
     @get:Bindable
     var managerRemoteVersion = CoreR.string.loading.asText()
         set(value) = set(value, field, { field = it }, BR.managerRemoteVersion)

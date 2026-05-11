@@ -1,7 +1,7 @@
 use crate::bootstages::BootState;
 use crate::consts::{
-    MAGISK_FILE_CON, MAGISK_FULL_VER, MAGISK_VER_CODE, MAGISK_VERSION,
-    MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL, get_sepol_proc_domain,
+    MAGISK_FULL_VER, MAGISK_VER_CODE, MAGISK_VERSION,
+    MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL, get_sepol_proc_domain, magisk_file_con,
 };
 use crate::db::Sqlite3;
 use crate::ffi::{
@@ -382,7 +382,11 @@ fn daemon_entry() {
     };
 
     sock_path.follow_link().chmod(0o666).log_ok();
-    sock_path.set_secontext(cstr!(MAGISK_FILE_CON)).log_ok();
+    let file_con = magisk_file_con();
+    let file_con_cstr = std::ffi::CString::new(file_con.as_bytes()).unwrap();
+    unsafe {
+        sock_path.set_secontext(file_con_cstr.as_c_str()).log_ok();
+    }
 
     // Loop forever to listen for requests
     let daemon = MagiskD::get();

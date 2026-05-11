@@ -1,5 +1,5 @@
 use crate::SePolicy;
-use crate::consts::{SEPOL_FILE_TYPE, SEPOL_LOG_TYPE, get_sepol_proc_domain};
+use crate::consts::{SEPOL_LOG_TYPE, get_sepol_proc_domain, get_sepol_file_type};
 use crate::ffi::Xperm;
 use base::{LogLevel, set_log_level_state};
 
@@ -17,7 +17,7 @@ macro_rules! rules {
         vec![get_sepol_proc_domain()]
     };
     (@args [file]) => {
-        vec![SEPOL_FILE_TYPE]
+        vec![get_sepol_file_type()]
     };
     (@args [log]) => {
         vec![SEPOL_LOG_TYPE]
@@ -26,7 +26,7 @@ macro_rules! rules {
         get_sepol_proc_domain()
     };
     (@args file) => {
-        SEPOL_FILE_TYPE
+        get_sepol_file_type()
     };
     (@args log) => {
         SEPOL_LOG_TYPE

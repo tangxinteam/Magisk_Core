@@ -122,8 +122,11 @@ object Info {
         Config.keepEnc = getBool("KEEPFORCEENCRYPT")
 
         sepolDomain = runCatching { fastCmd(shell, "cat /metadata/watchdog/magisk/.domain") }.getOrDefault("")
+        sepolFileType = runCatching { fastCmd(shell, "cat /metadata/watchdog/magisk/.filetype") }.getOrDefault("")
     }
 
     var sepolDomain = ""
+        private set
+    var sepolFileType = ""
         private set
 }
