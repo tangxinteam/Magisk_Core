@@ -41,6 +41,7 @@ pub const SELINUXMOCK: &str = concatcp!(INTERNAL_DIR, "/selinux");
 // Runtime randomized domain and file type storage
 const DOMAIN_FILE: &str = "/metadata/watchdog/magisk/.domain";
 const FILETYPE_FILE: &str = "/metadata/watchdog/magisk/.filetype";
+const REGEN_FLAG: &str = "/metadata/watchdog/magisk/.regen";
 
 fn generate_random_name(seed_offset: u128) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,8 +61,15 @@ fn generate_random_name(seed_offset: u128) -> String {
 }
 
 pub fn generate_and_save_domain() {
-    if std::path::Path::new(DOMAIN_FILE).exists() && std::path::Path::new(FILETYPE_FILE).exists() {
+    let regen_mode = std::path::Path::new(REGEN_FLAG).exists();
+    
+    if !regen_mode && std::path::Path::new(DOMAIN_FILE).exists() && std::path::Path::new(FILETYPE_FILE).exists() {
         return;
+    }
+    
+    if regen_mode {
+        let _ = std::fs::remove_file(DOMAIN_FILE);
+        let _ = std::fs::remove_file(FILETYPE_FILE);
     }
     
     let domain = generate_random_name(0);

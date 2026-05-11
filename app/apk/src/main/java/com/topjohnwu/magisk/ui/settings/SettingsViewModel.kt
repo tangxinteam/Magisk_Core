@@ -49,10 +49,10 @@ class SettingsViewModel : BaseViewModel(), BaseSettingsItem.Handler {
             list.add(AddShortcut)
 
         // Manager
-        list.addAll(listOf(
-            AppSettings,
-            UpdateChannel, UpdateChannelUrl, DoHToggle, UpdateChecker, DownloadPath, RandNameToggle
-        ))
+            list.addAll(listOf(
+                AppSettings,
+                UpdateChannel, UpdateChannelUrl, DoHToggle, UpdateChecker, DownloadPath, RandNameToggle, DomainRegenToggle
+            ))
         if (Info.env.isActive && Const.USER_ID == 0) {
             if (hidden) list.add(Restore) else list.add(Hide)
         }

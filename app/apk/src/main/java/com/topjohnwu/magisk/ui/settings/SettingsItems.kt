@@ -199,6 +199,23 @@ object RandNameToggle : BaseSettingsItem.Toggle() {
     override var value by Config::randName
 }
 
+object DomainRegenToggle : BaseSettingsItem.Toggle() {
+    override val title = CoreR.string.settings_domain_regen_title.asText()
+    override val description = CoreR.string.settings_domain_regen_summary.asText()
+    override var value by Config::domainRegen
+
+    override fun onPressed(view: View, handler: Handler) {
+        val newValue = !value
+        super.onPressed(view, handler)
+        // Sync regen flag file immediately
+        if (newValue) {
+            Shell.cmd("touch /metadata/watchdog/magisk/.regen").exec()
+        } else {
+            Shell.cmd("rm -f /metadata/watchdog/magisk/.regen").exec()
+        }
+    }
+}
+
 // --- Magisk
 
 object Magisk : BaseSettingsItem.Section() {
